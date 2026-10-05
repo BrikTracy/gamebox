@@ -1,0 +1,68 @@
+# ISO GameBox metodą Bazzite (Titanoboa + Anaconda). Flatpaki z katalogu są wbudowane w płytę,
+# więc instalacja nie wymaga internetu. Uruchamiaj PO udanym `build-image` (potrzebny obraz w ghcr.io).
+name: build-iso
+on: { workflow_dispatch: }
+permissions: { contents: read, packages: read }
+jobs:
+  iso:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [gamebox, gamebox-nvidia]
+    steps:
+      - uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6
+        with: { tool-cache: true }
+
+      # Tak samo jak u Bazzite: obraz ma wiele GB, a ISO buduje się z kopii w storage podmana.
+      - name: Magazyn kontenerów na btrfs (loopback)
+        run: |
+          sudo truncate -s 110G /mnt/podman-storage.img
+          sudo mkfs.btrfs -f -m single -d single /mnt/podman-storage.img
+          sudo podman system reset --force
+          sudo systemctl stop podman.service
+          LOOP=$(sudo losetup --find --show --direct-io=on /mnt/podman-storage.img)
+          sudo mkdir -p /mnt/podman-storage
+          sudo mount -o compress-force=zstd:2,discard=async,noatime "$LOOP" /mnt/podman-storage
+          sudo mkdir -p /mnt/podman-storage/storage /mnt/podman-storage/tmp
+          sudo mount --bind /mnt/podman-storage/storage /var/lib/containers/storage
+          sudo systemctl start podman.service
+
+      - uses: actions/checkout@v4
+      - id: o
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Logowanie do ghcr.io (rootful podman)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Przygotuj instalator (Bazzite @ przypięta wersja + łatki GameBox + nasze Flatpaki)
+        run: iso/prepare-installer.sh installer
+
+      - name: Zbuduj obraz ładunku
+        run: |
+          IMAGE="ghcr.io/${{ steps.o.outputs.owner }}/${{ matrix.name }}:latest"
+          sudo env TMPDIR=/mnt/podman-storage/tmp podman build \
+            --cap-add sys_admin --security-opt label=disable \
+            --build-arg BASE_IMAGE="$IMAGE" \
+            --build-arg INSTALL_IMAGE_PAYLOAD="$IMAGE" \
+            --build-arg FLATPAK_DIR_SHORTNAME=kde_flatpaks \
+            -t localhost/payload:latest installer/
+
+      - name: Zbuduj ISO
+        id: build
+        uses: Zeglius/titanoboa@7737f4748458252ac827dca14b3d6dd09298472a   # gałąź revamp-pr, której używa Bazzite
+        with:
+          image-ref: localhost/payload:latest
+          iso-dest: ${{ matrix.name }}-live-amd64.iso
+
+      - name: Suma kontrolna
+        run: |
+          mkdir -p upload
+          mv "${{ steps.build.outputs.iso-dest }}" upload/
+          cd upload && sha256sum ./*.iso | tee SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-iso
+          path: upload/
+          compression-level: 0

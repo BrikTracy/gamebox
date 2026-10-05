@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""gamebox-emu: instalacja i obsługa emulatorów GameBox na podstawie katalogu.
+
+  gamebox-emu list                 co jest, co zainstalowane, co pasuje do tego sprzętu
+  gamebox-emu install <id|nazwa>   zainstaluj (rozumie też: recommended, bundled)
+  gamebox-emu remove <id|nazwa>    odinstaluj
+  gamebox-emu doctor [--online]    sprawdź system (z --online także identyfikatory na Flathubie)
+  gamebox-emu gui                  okno wyboru (kdialog)
+  gamebox-emu prune                usuń zainstalowane, ale niepasujące do sprzętu (woła firstboot)
+  gamebox-emu bundled-ids          lista do ISO (woła CI)
+  gamebox-emu apply-overrides      dostęp Flatpaków do ~/Emulation (woła firstboot)
+"""
+import os
+import shutil
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+CATALOG = Path(os.environ.get("GAMEBOX_CATALOG") or
+               next((p for p in (Path("/usr/share/gamebox/catalog.toml"),
+                                 HERE.parent / "share/gamebox/catalog.toml") if p.exists()),
+                    Path("/usr/share/gamebox/catalog.toml")))
+PROFILE = Path(os.environ.get("GAMEBOX_PROFILE", "/var/lib/gamebox/profile.env"))
+RANK = {"LOW": 0, "MID": 1, "HIGH": 2}
+
+
+def load_catalog():
+    with open(CATALOG, "rb") as f:
+        return tomllib.load(f)["app"]
+
+
+def load_profile():
+    prof = {"CLASS": "MID", "AVX2": "yes", "RAM_MB": "0", "CORES": "0", "GPU_VENDOR": "unknown"}
+    try:
+        for line in PROFILE.read_text().splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                prof[k.strip()] = v.strip().strip('"')
+    except OSError:
+        pass  # brak profilu (np. w CI): zakładamy sprzęt przeciętny, a AVX2 niech zdecyduje użytkownik
+    return prof
+
+
+def suitability(app, prof):
+    """(ok, powód) czy aplikacja ma sens na tym sprzęcie."""
+    if app.get("avx2") and prof["AVX2"] != "yes":
+        return False, "CPU bez AVX2"
+    need = app.get("min_class", "LOW")
+    if RANK.get(prof["CLASS"], 1) < RANK[need]:
+        return False, f"zbyt słaby sprzęt (klasa {prof['CLASS']}, potrzeba {need}+)"
+    return True, ""
+
+
+def flatpak(*args, check=False, capture=True):
+    return subprocess.run(["flatpak", *args], text=True, check=check,
+                          stdout=subprocess.PIPE if capture else None,
+                          stderr=subprocess.PIPE if capture else None)
+
+
+def installed_ids():
+    if not shutil.which("flatpak"):
+        return set()
+    r = flatpak("list", "--app", "--columns=application")
+    return {l.strip() for l in r.stdout.splitlines() if l.strip()}
+
+
+def scope():
+    return "--system" if os.geteuid() == 0 else "--user"
+
+
+def find(apps, token):
+    t = token.lower()
+    exact = [a for a in apps if a["id"].lower() == t or a["name"].lower() == t]
+    if exact:
+        return exact
+    return [a for a in apps if t in a["id"].lower() or t in a["name"].lower()]
+
+
+def cmd_list(apps, prof):
+    have = installed_ids()
+    print(f"Sprzęt: klasa {prof['CLASS']}, AVX2={prof['AVX2']}, RAM={prof['RAM_MB']} MB, GPU={prof['GPU_VENDOR']}\n")
+    for a in apps:
+        ok, why = suitability(a, prof)
+        mark = "[x]" if a["id"] in have else "[ ]"
+        note = "" if ok else f"  (nie zalecane: {why})"
+        print(f"{mark} {a['name']:<22} {a['id']:<36} {a['tier']:<8}{note}")
+        print(f"      {a['desc']}")
+
+
+def cmd_install(apps, prof, tokens):
+    if not tokens:
+        sys.exit("Podaj co zainstalować: id, nazwę, recommended albo bundled.")
+    todo = []
+    for t in tokens:
+        if t == "recommended":
+            todo += [a for a in apps if suitability(a, prof)[0]]
+        elif t == "bundled":
+            todo += [a for a in apps if a["tier"] == "bundled" and suitability(a, prof)[0]]
+        else:
+            m = find(apps, t)
+            if not m:
+                sys.exit(f"Nie ma w katalogu: {t}  (gamebox-emu list)")
+            if len(m) > 1:
+                sys.exit(f"'{t}' pasuje do kilku: " + ", ".join(a["name"] for a in m))
+            todo += m
+    have = installed_ids()
+    failed = []
+    for a in {a["id"]: a for a in todo}.values():
+        if a["id"] in have:
+            print(f"już jest: {a['name']}")
+            continue
+        ok, why = suitability(a, prof)
+        if not ok:
+            print(f"UWAGA: {a['name']} - {why}. Instaluję, ale może nie działać.")
+        print(f"==> {a['name']}")
+        r = flatpak("install", scope(), "-y", "--noninteractive", "flathub", a["id"], capture=False)
+        if r.returncode != 0:
+            failed.append(a["name"])
+    if failed:
+        sys.exit("Nie udało się: " + ", ".join(failed))
+
+
+def cmd_remove(apps, tokens):
+    for t in tokens:
+        for a in find(apps, t)[:1]:
+            print(f"==> usuwam {a['name']}")
+            flatpak("uninstall", "-y", "--noninteractive", a["id"], capture=False)
+
+
+def cmd_prune(apps, prof):
+    have = installed_ids()
+    for a in apps:
+        ok, why = suitability(a, prof)
+        if a["tier"] == "bundled" and a["id"] in have and not ok:
+            print(f"usuwam {a['name']}: {why}")
+            flatpak("uninstall", "-y", "--noninteractive", a["id"])
+    flatpak("uninstall", "--unused", "-y", "--noninteractive")
+
+
+def cmd_overrides(apps):
+    # Dostęp do ~/Emulation (ROM-y, BIOS-y). Nadpisanie można ustawić dla aplikacji, której jeszcze nie ma.
+    for a in apps:
+        flatpak("override", "--system", "--filesystem=~/Emulation", a["id"])
+
+
+def cmd_doctor(apps, prof, online):
+    problems = 0
+
+    def row(ok, text, hint=""):
+        nonlocal problems
+        print(("[ok]  " if ok else "[!!]  ") + text + ("" if ok else f"\n        -> {hint}"))
+        problems += 0 if ok else 1
+
+    row(shutil.which("flatpak") is not None, "flatpak jest", "brak flatpaka - to nie jest obraz Bazzite")
+    row(CATALOG.exists(), f"katalog: {CATALOG}", "brak katalogu")
+    r = flatpak("remotes", "--columns=name") if shutil.which("flatpak") else None
+    row(bool(r and "flathub" in r.stdout), "zdalne repozytorium flathub włączone",
+        "flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo")
+    row(shutil.which("lxb-desktop") is not None, "LineXinBar (lxb-desktop) zainstalowany", "brakuje pakietu lxb-desktop")
+    row(shutil.which("lxb-retroarch") is not None, "integracja RetroArch (lxb-retroarch)",
+        "bez niego LineXinBar nie pokaże biblioteki gier z okładkami")
+    row(Path("/usr/share/wayland-sessions/lxb.desktop").exists(), "sesja LineXinBar (lxb.desktop)",
+        "nie zobaczysz LineXinBar na ekranie logowania")
+    row(shutil.which("bazaar") is not None, "Bazaar (sklep Bazzite)", "brak Bazaar - użyj: gamebox-emu install")
+    have = installed_ids()
+    for a in (x for x in apps if x["tier"] == "bundled"):
+        ok, why = suitability(a, prof)
+        if ok and a["id"] not in have:
+            row(False, f"brakuje zalecanego: {a['name']}", f"gamebox-emu install {a['id']}")
+    if online and shutil.which("flatpak"):
+        print("\nSprawdzam identyfikatory na Flathubie...")
+        for a in apps:
+            r = flatpak("remote-info", "flathub", a["id"])
+            row(r.returncode == 0, f"flathub zna {a['id']}", "ID nie istnieje albo brak sieci - popraw catalog.toml")
+    print(f"\nProblemów: {problems}")
+    return 1 if problems else 0
+
+
+def cmd_gui(apps, prof):
+    if not shutil.which("kdialog"):
+        sys.exit("Brak kdialog. Użyj: gamebox-emu list / install")
+    have = installed_ids()
+    items = []
+    for a in apps:
+        ok, why = suitability(a, prof)
+        label = f"{a['name']} - {a['desc']}" + ("" if ok else f"  [nie zalecane: {why}]")
+        items += [a["id"], label, "on" if a["id"] in have else "off"]
+    r = subprocess.run(["kdialog", "--title", "Emulatory GameBox", "--separate-output", "--checklist",
+                        "Zaznacz, co ma być zainstalowane. Odznaczenie usuwa program.", *items],
+                       text=True, stdout=subprocess.PIPE)
+    if r.returncode != 0:
+        return
+    want = set(r.stdout.split())
+    add = [a for a in apps if a["id"] in want and a["id"] not in have]
+    rem = [a for a in apps if a["id"] not in want and a["id"] in have]
+    for a in add:
+        flatpak("install", scope(), "-y", "--noninteractive", "flathub", a["id"])
+    for a in rem:
+        flatpak("uninstall", "-y", "--noninteractive", a["id"])
+    subprocess.run(["kdialog", "--msgbox", f"Zainstalowano: {len(add)}, usunięto: {len(rem)}."])
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return 0
+    apps, prof = load_catalog(), load_profile()
+    c, rest = argv[0], argv[1:]
+    if c == "list":
+        cmd_list(apps, prof)
+    elif c == "install":
+        cmd_install(apps, prof, rest)
+    elif c == "remove":
+        cmd_remove(apps, rest)
+    elif c == "prune":
+        cmd_prune(apps, prof)
+    elif c == "apply-overrides":
+        cmd_overrides(apps)
+    elif c == "bundled-ids":
+        for a in apps:
+            if a["tier"] == "bundled":
+                print(a["id"])
+    elif c == "doctor":
+        return cmd_doctor(apps, prof, "--online" in rest)
+    elif c == "gui":
+        cmd_gui(apps, prof)
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

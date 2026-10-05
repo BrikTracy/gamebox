@@ -1,0 +1,16 @@
+[Unit]
+Description=GameBox: dobranie emulatorów do sprzętu (pierwszy start)
+After=network-online.target gamebox-hwdetect.service bazzite-flatpak-manager.service
+Wants=network-online.target
+Requires=gamebox-hwdetect.service
+ConditionPathExists=!/var/lib/gamebox/firstboot.done
+
+[Service]
+# Type=simple, NIE oneshot: oneshot blokuje osiągnięcie multi-user/graphical.target,
+# a instalacja z sieci potrafi trwać długo. Tak system startuje od razu.
+Type=simple
+ExecStart=/usr/libexec/gamebox-firstboot
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

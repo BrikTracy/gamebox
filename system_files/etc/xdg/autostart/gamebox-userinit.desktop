@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=GameBox user init
+Exec=/usr/libexec/gamebox-userinit
+X-KDE-autostart-phase=2

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Pierwszy start: dobiera emulatory do sprzętu.
+#  - System z ISO GameBox: emulatory już są (wbudowane), działa BEZ internetu: tylko usuwa te,
+#    które na tym CPU nie ruszą (np. PCSX2 bez AVX2).
+#  - System przełączony z samego Bazzite (bez ISO): brakujące, pasujące emulatory dociąga z Flathuba.
+#    Brak sieci -> ponowna próba przy następnym starcie, ale maksymalnie 3 razy (żeby zły
+#    identyfikator nie zapętlał się w nieskończoność).
+set -u
+STATE=/var/lib/gamebox
+mkdir -p "$STATE"
+. "$STATE/profile.env"
+
+flatpak remote-add --if-not-exists --system flathub /etc/flatpak/remotes.d/flathub.flatpakrepo 2>/dev/null \
+  || flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+
+/usr/bin/gamebox-emu apply-overrides
+/usr/bin/gamebox-emu prune
+
+FAILED="$STATE/failed-apps.txt"
+if /usr/bin/gamebox-emu install bundled >"$STATE/firstboot.log" 2>&1; then
+  rm -f "$FAILED" "$STATE/firstboot.tries"
+  touch "$STATE/firstboot.done"
+  exit 0
+fi
+
+tries=$(( $(cat "$STATE/firstboot.tries" 2>/dev/null || echo 0) + 1 ))
+echo "$tries" > "$STATE/firstboot.tries"
+grep -i 'Nie udało się' "$STATE/firstboot.log" > "$FAILED" 2>/dev/null || true
+if [ "$tries" -ge 3 ]; then
+  touch "$STATE/firstboot.done"   # poddajemy się; reszta przez: gamebox-emu install / Bazaar
+fi
+exit 1

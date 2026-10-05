@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Jeden folder na BIOS-y: ~/Emulation/bios.   Użycie:  gamebox-bios [folder_z_biosami]
+#  - RetroArch: NIE ruszamy. LineXinBar sam zapyta o BIOS, gdy gra się nie uruchomi, i skopiuje go gdzie trzeba.
+#  - PCSX2 i DuckStation: podlinkowujemy ten folder, żeby wystarczyło wrzucić pliki w jedno miejsce.
+# BIOS-ów nie ma w systemie (prawa autorskie): trzeba je zgrać z własnej konsoli.
+BIOS="$HOME/Emulation/bios"
+mkdir -p "$BIOS" "$HOME/Emulation/roms"
+[ -n "${1:-}" ] && [ -d "$1" ] && cp -an "$1"/. "$BIOS"/ && echo "skopiowano z: $1"
+link() {  # $1 = gdzie emulator oczekuje BIOS-ów
+  mkdir -p "$(dirname "$1")"
+  if [ -e "$1" ] && [ ! -L "$1" ]; then
+    cp -an "$1"/. "$BIOS"/ 2>/dev/null; mv "$1" "$1.bak.$(date +%s)"
+  fi
+  ln -sfn "$BIOS" "$1" && echo "podlinkowano: $1"
+}
+V="$HOME/.var/app"
+link "$V/net.pcsx2.PCSX2/config/PCSX2/bios"
+link "$V/org.duckstation.DuckStation/data/duckstation/bios"
+echo
+echo "Wrzuć pliki BIOS do: $BIOS"
+echo "RPCS3: firmware PS3 instaluje się w samym programie (File -> Install Firmware)."
+[ -t 1 ] && xdg-open "$BIOS" 2>/dev/null
+exit 0

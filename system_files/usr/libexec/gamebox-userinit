@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Raz na użytkownika po zalogowaniu (autostart KDE).
+. /var/lib/gamebox/profile.env 2>/dev/null || exit 0
+MARK="$HOME/.config/gamebox-userinit.done"
+ROMS="$HOME/Emulation/roms"
+
+if [ ! -e "$MARK" ]; then
+  # Foldery konsol nazwane tak, jak rozpoznaje je LineXinBar (puste foldery nie są pokazywane).
+  for c in nes snes n64 gb gbc gba nds gc wii megadrive mastersystem gamegear saturn dreamcast \
+           psx ps2 psp arcade scummvm dos atari2600 pcengine neogeo; do
+    mkdir -p "$ROMS/$c"
+  done
+  # Powiedz LineXinBar, gdzie są gry. Dopisujemy klucz tylko, gdy go nie ma (nie nadpisujemy wyboru użytkownika).
+  T="$HOME/.config/lxb/shell.toml"
+  mkdir -p "$(dirname "$T")"
+  if ! grep -qE '^[[:space:]]*retroarch-roms[[:space:]]*=' "$T" 2>/dev/null; then
+    { printf 'retroarch-roms = "%s"\n' "$ROMS"; cat "$T" 2>/dev/null || true; } > "$T.new" && mv "$T.new" "$T"
+  fi
+  /usr/bin/gamebox-bios >/dev/null 2>&1
+  [ "$CLASS" = LOW ] && kwriteconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor 0
+  touch "$MARK"
+fi
+
+if [ "$GPU_VENDOR" = nvidia ] && [ "$IMAGE_NVIDIA" = no ]; then
+  notify-send "GameBox" "Wykryto kartę NVIDIA. Nowsze karty (GTX 900+) działają lepiej na wariancie gamebox-nvidia. Starsze (GeForce 400-700) zostaw na wariancie gamebox (sterownik nouveau)."
+fi
+if [ "$TV_HINT" = yes ]; then
+  notify-send "GameBox" "Wykryto telewizor (HDMI bez ekranu laptopa). Na ekranie logowania wybierz sesję LineXinBar (interfejs na pada)."
+fi
+exit 0

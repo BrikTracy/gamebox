@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+cat /var/lib/gamebox/profile.env
+echo
+/usr/bin/gamebox-emu list
+[ -s /var/lib/gamebox/failed-apps.txt ] && { echo; echo "Nie udało się zainstalować:"; cat /var/lib/gamebox/failed-apps.txt; }
+exit 0

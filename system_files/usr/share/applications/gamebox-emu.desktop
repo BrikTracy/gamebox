@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Emulatory GameBox
+Comment=Zainstaluj lub usuń emulatory dobrane do tego sprzętu
+Exec=/usr/bin/gamebox-emu gui
+Icon=applications-games
+Categories=System;PackageManager;
+Keywords=emulator;retro;gry;

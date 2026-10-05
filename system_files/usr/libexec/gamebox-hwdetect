@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Wykrywa CPU / RAM / GPU / ekrany i zapisuje profil do /var/lib/gamebox/profile.env
+set -u
+mkdir -p /var/lib/gamebox
+OUT=/var/lib/gamebox/profile.env
+
+CPU=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | xargs)
+CORES=$(nproc)
+RAM_MB=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo)
+GPU_RAW=$(lspci -nn 2>/dev/null | grep -Ei 'vga|3d|display' || true)
+
+GPU_VENDOR=unknown
+# Rozpoznanie po ID producenta PCI (8086=Intel, 1002=AMD, 10de=NVIDIA) - szukanie po nazwie dawało błędy
+# (np. "ati" pasuje do słów "Corporation" i "compatible"). Hybryda: NVIDIA ma pierwszeństwo, potem AMD.
+echo "$GPU_RAW" | grep -q '\[8086:' && GPU_VENDOR=intel
+echo "$GPU_RAW" | grep -q '\[1002:' && GPU_VENDOR=amd
+echo "$GPU_RAW" | grep -q '\[10de:' && GPU_VENDOR=nvidia
+
+AVX2=no
+grep -qm1 ' avx2' /proc/cpuinfo && AVX2=yes
+
+CLASS=MID
+if [ "$RAM_MB" -le 4500 ] || [ "$CORES" -le 2 ]; then CLASS=LOW
+elif [ "$RAM_MB" -ge 15000 ] && [ "$CORES" -ge 6 ] && [ "$GPU_VENDOR" != intel ]; then CLASS=HIGH
+fi
+
+# HDMI/DP podłączone, a wewnętrzny panel (eDP/LVDS) nie => prawdopodobnie TV
+HDMI=no; INTERNAL=no
+for s in /sys/class/drm/card*-*/status; do
+  [ -e "$s" ] || continue
+  n=$(basename "$(dirname "$s")")
+  st=$(cat "$s")
+  case "$n" in
+    *eDP*|*LVDS*|*DSI*) [ "$st" = connected ] && INTERNAL=yes ;;   # wewnętrzny panel MUSI być sprawdzony pierwszy (eDP-1 pasuje też do *DP-*)
+    *HDMI*|*DP-*) [ "$st" = connected ] && HDMI=yes ;;
+  esac
+done
+TV_HINT=no
+[ "$HDMI" = yes ] && [ "$INTERNAL" = no ] && TV_HINT=yes
+
+IMAGE_NVIDIA=no
+rpm-ostree status 2>/dev/null | grep -qi nvidia && IMAGE_NVIDIA=yes
+
+cat > "$OUT" <<ENV
+CPU="$CPU"
+CORES=$CORES
+RAM_MB=$RAM_MB
+GPU_VENDOR=$GPU_VENDOR
+CLASS=$CLASS
+TV_HINT=$TV_HINT
+IMAGE_NVIDIA=$IMAGE_NVIDIA
+AVX2=$AVX2
+ENV
+chmod 644 "$OUT"

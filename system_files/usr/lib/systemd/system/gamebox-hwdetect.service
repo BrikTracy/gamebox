@@ -1,0 +1,10 @@
+[Unit]
+Description=GameBox: wykrywanie sprzętu przy każdym starcie
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/gamebox-hwdetect
+
+[Install]
+WantedBy=multi-user.target

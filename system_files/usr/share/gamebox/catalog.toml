@@ -1,0 +1,188 @@
+# GameBox: katalog emulatorów i aplikacji.
+#
+# To JEDYNE miejsce, gdzie wymieniamy programy. Z tego pliku korzystają:
+#   - ISO            (tier = "bundled" -> wbudowane w płytę, instalacja bez internetu)
+#   - Bazaar         (sekcja "Emulacja" w sklepie Bazzite, build_files/patch-bazaar.py)
+#   - gamebox-emu    (instalacja / usuwanie / doctor / okno wyboru)
+#   - firstboot      (dobranie do sprzętu: usuwa to, co na tym CPU nie ruszy)
+#
+# Identyfikatory (id) pochodzą z listy polecanej przez Bazzite w Bazaarze albo zostały
+# sprawdzone na Flathubie (DuckStation, Flycast, antimicrox). `gamebox-emu doctor --online`
+# sprawdza je ponownie na żywo.
+#
+# Pola:
+#   tier      bundled = w ISO (usuwane przy pierwszym starcie, jeśli sprzęt jej nie uciągnie)
+#             store   = tylko na żądanie (Bazaar / gamebox-emu install)
+#   avx2      true = wymaga CPU z AVX2 (PCSX2: oficjalne minimum; RPCS3/Cemu: poniżej zaleca się AVX2)
+#   min_class najsłabsza klasa sprzętu (LOW < MID < HIGH, liczy gamebox-hwdetect), na której ma sens
+#   lxb       jak widzi to LineXinBar:
+#               library  = biblioteka gier z okładkami (tylko RetroArch przez lxb-retroarch)
+#               launcher = wiersz w kolumnie Games (każdy Flatpak z kategorią Game)
+#               tool     = narzędzie (kolumna Utilities/Software)
+
+[[app]]
+id = "org.libretro.RetroArch"
+name = "RetroArch"
+desc = "Jeden program na ponad 40 konsol. Najlepszy wybór na stare laptopy."
+group = "emulator"
+tier = "bundled"
+min_class = "LOW"
+lxb = "library"
+
+[[app]]
+id = "io.github.antimicrox.antimicrox"
+name = "antimicrox"
+desc = "Pad jako klawiatura i mysz: sterowanie komputerem i aplikacjami bez padów w obsłudze."
+group = "tool"
+tier = "bundled"
+min_class = "LOW"
+lxb = "tool"
+
+[[app]]
+id = "io.mgba.mGBA"
+name = "mGBA"
+desc = "Game Boy, Game Boy Color, Game Boy Advance."
+group = "emulator"
+tier = "bundled"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "org.ppsspp.PPSSPP"
+name = "PPSSPP"
+desc = "PlayStation Portable."
+group = "emulator"
+tier = "bundled"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "net.kuribo64.melonDS"
+name = "melonDS"
+desc = "Nintendo DS."
+group = "emulator"
+tier = "bundled"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "org.flycast.Flycast"
+name = "Flycast"
+desc = "Sega Dreamcast, Naomi, Atomiswave."
+group = "emulator"
+tier = "bundled"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "org.duckstation.DuckStation"
+name = "DuckStation"
+desc = "PlayStation 1."
+group = "emulator"
+tier = "bundled"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "com.snes9x.Snes9x"
+name = "Snes9x"
+desc = "Super Nintendo."
+group = "emulator"
+tier = "bundled"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "org.scummvm.ScummVM"
+name = "ScummVM"
+desc = "Klasyczne gry przygodowe. Bardzo lekki."
+group = "emulator"
+tier = "bundled"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "org.DolphinEmu.dolphin-emu"
+name = "Dolphin"
+desc = "Nintendo GameCube i Wii."
+group = "emulator"
+tier = "bundled"
+min_class = "MID"
+lxb = "launcher"
+
+[[app]]
+id = "net.pcsx2.PCSX2"
+name = "PCSX2"
+desc = "PlayStation 2. Wymaga CPU z AVX2."
+group = "emulator"
+tier = "bundled"
+avx2 = true
+min_class = "MID"
+lxb = "launcher"
+
+[[app]]
+id = "net.rpcs3.RPCS3"
+name = "RPCS3"
+desc = "PlayStation 3. Wymagający: dużo RAM i szybki CPU z AVX2."
+group = "emulator"
+tier = "bundled"
+avx2 = true
+min_class = "HIGH"
+lxb = "launcher"
+
+[[app]]
+id = "info.cemu.Cemu"
+name = "Cemu"
+desc = "Nintendo Wii U. Wymagający."
+group = "emulator"
+tier = "bundled"
+avx2 = true
+min_class = "HIGH"
+lxb = "launcher"
+
+# ---- tylko na żądanie (Bazaar / gamebox-emu install) ----
+
+[[app]]
+id = "app.xemu.xemu"
+name = "xemu"
+desc = "Original Xbox. Wymaga własnego BIOS-u i obrazu dysku."
+group = "emulator"
+tier = "store"
+min_class = "MID"
+lxb = "launcher"
+
+[[app]]
+id = "org.mamedev.MAME"
+name = "MAME"
+desc = "Automaty arcade."
+group = "emulator"
+tier = "store"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "io.github.stella_emu.Stella"
+name = "Stella"
+desc = "Atari 2600."
+group = "emulator"
+tier = "store"
+min_class = "LOW"
+lxb = "launcher"
+
+[[app]]
+id = "net.retrodeck.retrodeck"
+name = "RetroDECK"
+desc = "Gotowy zestaw wielu emulatorów z własnym launcherem (polecany przez Bazzite)."
+group = "emulator"
+tier = "store"
+min_class = "MID"
+lxb = "launcher"
+
+[[app]]
+id = "com.heroicgameslauncher.hgl"
+name = "Heroic Games Launcher"
+desc = "Gry z Epic Games, GOG i Amazon. LineXinBar ma na nim zbudowaną integrację Epic (pakiet lxb-heroic)."
+group = "pc-games"
+tier = "store"
+min_class = "LOW"
+lxb = "launcher"

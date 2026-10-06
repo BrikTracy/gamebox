@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [gamebox, gamebox-nvidia]
+        name: [gamebox]   # gamebox-nvidia NIE DZIAŁA (błąd: brak nouveau_icd w instalatorze Bazzite). Było: [gamebox, gamebox-nvidia]
     steps:
       - uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6
         with: { tool-cache: true }
